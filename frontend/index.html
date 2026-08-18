@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>DBW Accident API — Demo Client</title>
+    <style>
+        body { font-family: system-ui, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; color: #222; }
+        h1 { font-size: 1.5rem; }
+        h2 { font-size: 1.1rem; margin-top: 2rem; border-bottom: 2px solid #ddd; padding-bottom: 0.3rem; }
+        button { display: block; width: 100%; text-align: left; padding: 0.6rem 1rem; margin: 0.4rem 0;
+                 border: 1px solid #ccc; border-radius: 6px; background: #f7f7f7; cursor: pointer; font-size: 0.95rem; }
+        button:hover { background: #e8f0fe; border-color: #4285f4; }
+        .answer { background: #e6f4ea; border: 1px solid #34a853; border-radius: 6px; padding: 0.8rem;
+                  margin-top: 0.6rem; font-weight: bold; }
+        pre { background: #1e1e1e; color: #d4d4d4; padding: 1rem; border-radius: 6px; overflow-x: auto; font-size: 0.8rem; }
+        table { border-collapse: collapse; width: 100%; margin-top: 0.5rem; }
+        th, td { border: 1px solid #ccc; padding: 0.4rem 0.6rem; text-align: left; font-size: 0.9rem; }
+        th { background: #f0f0f0; }
+    </style>
+</head>
+<body>
+    <h1>🚗 German Traffic Accident Data API — Demo Client</h1>
+    <p>Click a question below to query the API live. Source data: Unfallatlas (2016-2024) + Regionalstatistik.
+       Full docs: <a href="/api-docs" target="_blank">/api-docs</a></p>
+
+    <h2>Mandatory Questions</h2>
+    <button onclick="q1()">Q1: What is the earliest accident year in the complete dataset?</button>
+    <button onclick="q2()">Q2: How many accidents with personal injury occurred in Saxony in 2023?</button>
+    <button onclick="q3()">Q3: From which year is data available for North Rhine-Westphalia?</button>
+    <button onclick="q4()">Q4: From which year is data available for Mecklenburg-Vorpommern?</button>
+    <button onclick="q5()">Q5: How many pedestrian accidents occurred in Berlin in 2023?</button>
+
+    <h2>Cross-Source Questions (Unfallatlas + Regionalstatistik)</h2>
+    <button onclick="q6()">Q6: What is the accident rate per 100,000 inhabitants in Saxony (2023)?</button>
+    <button onclick="q7()">Q7: Which 5 districts had the highest accident rate per 100,000 inhabitants (2023)?</button>
+    <button onclick="q12()">Q12: Which 5 districts have the highest accident density (per km²) in 2023?</button>
+
+    <h2>Bonus Questions</h2>
+    <button onclick="q8()">Bonus: Which 5 districts had the most fatal accidents in 2024?</button>
+    <button onclick="q9()">Bonus: How many bicycle accidents occurred in Dresden in 2024?</button>
+
+    <h2>Explore</h2>
+    <button onclick="q10()">Browse all federal states + population</button>
+    <button onclick="q11()">Show data sources, provenance and licenses</button>
+
+    <h2>Result</h2>
+    <div id="answer" class="answer" style="display:none;"></div>
+    <pre id="output">Click a button above to see the result here.</pre>
+
+    <script>
+        const API = 'http://localhost:3000';
+
+        function showAnswer(text) {
+            const el = document.getElementById('answer');
+            el.style.display = 'block';
+            el.textContent = '💡 Answer: ' + text;
+        }
+        function hideAnswer() {
+            document.getElementById('answer').style.display = 'none';
+        }
+        function showJSON(data) {
+            document.getElementById('output').textContent = JSON.stringify(data, null, 2);
+        }
+
+        async function q1() {
+            hideAnswer();
+            const res = await fetch(`${API}/metadata/years`);
+            const data = await res.json();
+            showJSON(data);
+            showAnswer(`Earliest accident year overall = ${data.overall.earliest_year}`);
+        }
+
+        async function q2() {
+            hideAnswer();
+            const res = await fetch(`${API}/accidents?state=SN&year=2023`);
+            const data = await res.json();
+            showJSON(data);
+            showAnswer(`${data.total} accidents in Saxony (2023)`);
+        }
+
+        async function q3() {
+            hideAnswer();
+            const res = await fetch(`${API}/metadata/years`);
+            const data = await res.json();
+            showJSON(data);
+            const nw = data.by_state.find(s => s.ags === '05');
+            showAnswer(`NRW data available from ${nw.earliest_year}`);
+        }
+
+        async function q4() {
+            hideAnswer();
+            const res = await fetch(`${API}/metadata/years`);
+            const data = await res.json();
+            showJSON(data);
+            const mv = data.by_state.find(s => s.ags === '13');
+            showAnswer(`Mecklenburg-Vorpommern data available from ${mv.earliest_year}`);
+        }
+
+        async function q5() {
+            hideAnswer();
+            const res = await fetch(`${API}/accidents?state=BE&year=2023&pedestrian=true`);
+            const data = await res.json();
+            showJSON(data);
+            showAnswer(`${data.total} pedestrian accidents in Berlin (2023)`);
+        }
+
+        async function q6() {
+            hideAnswer();
+            const res = await fetch(`${API}/aggregates/rates?level=state&year=2023`);
+            const data = await res.json();
+            showJSON(data);
+            const sn = data.data.find(s => s.ags === '14');
+            showAnswer(`Saxony 2023: ${sn.rate_per_100k} accidents per 100,000 inhabitants (${sn.accident_count} accidents / ${sn.population} inhabitants)`);
+        }
+
+        async function q7() {
+            hideAnswer();
+            const res = await fetch(`${API}/aggregates/rates?level=district&year=2023&limit=5`);
+            const data = await res.json();
+            showJSON(data);
+            const list = data.data.map(d => `${d.name} (${d.rate_per_100k}/100k)`).join(', ');
+            showAnswer(`Top 5 districts by accident rate (2023): ${list}`);
+        }
+
+        async function q8() {
+            hideAnswer();
+            const res = await fetch(`${API}/aggregates/accidents?level=district&year=2024&category=1`);
+            const data = await res.json();
+            const top5 = data.data.slice(0, 5);
+            showJSON({ ...data, data: top5 });
+            const list = top5.map(d => `${d.name} (${d.accident_count})`).join(', ');
+            showAnswer(`Top 5 districts by fatal accidents (2024): ${list}`);
+        }
+
+        async function q9() {
+            hideAnswer();
+            // 14612 = AGS for Dresden, Stadt
+            const res = await fetch(`${API}/accidents?region=14612&year=2024&bicycle=true`);
+            const data = await res.json();
+            showJSON(data);
+            showAnswer(`${data.total} bicycle accidents in Dresden (2024)`);
+        }
+
+        async function q10() {
+            hideAnswer();
+            const res = await fetch(`${API}/regions?level=state`);
+            const data = await res.json();
+            showJSON(data);
+        }
+
+        async function q11() {
+            hideAnswer();
+            const res = await fetch(`${API}/metadata/sources`);
+            const data = await res.json();
+            showJSON(data);
+        }
+        async function q12() {
+    hideAnswer();
+    const res = await fetch(`${API}/aggregates/density?year=2023&limit=5`);
+    const data = await res.json();
+    showJSON(data);
+    const list = data.data.map(d => `${d.name} (${d.accidents_per_km2}/km²)`).join(', ');
+    showAnswer(`Highest accident density (2023): ${list}`);
+}
+
+    </script>
+</body>
+</html>

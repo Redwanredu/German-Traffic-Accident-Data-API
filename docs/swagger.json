@@ -1,0 +1,683 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "German Traffic Accident Data API",
+    "version": "1.0.0",
+    "description": "API providing harmonised access to German road accident data (Unfallatlas) integrated with regional population statistics (Regionalstatistik) and area data (GV-ISys Gemeindeverzeichnis)."
+  },
+  "servers": [
+    {
+      "url": "http://localhost:3000",
+      "description": "Local development server"
+    }
+  ],
+  "components": {
+    "schemas": {
+      "Region": {
+        "type": "object",
+        "properties": {
+          "region_id": {
+            "type": "integer",
+            "example": 14
+          },
+          "ags": {
+            "type": "string",
+            "example": "14"
+          },
+          "name": {
+            "type": "string",
+            "example": "Sachsen"
+          },
+          "level": {
+            "type": "string",
+            "enum": [
+              "state",
+              "district"
+            ]
+          },
+          "population": {
+            "type": "integer",
+            "example": 4042422
+          },
+          "area_km2": {
+            "type": "number",
+            "example": 328.48,
+            "nullable": true
+          }
+        }
+      },
+      "Accident": {
+        "type": "object",
+        "properties": {
+          "accident_id": {
+            "type": "integer"
+          },
+          "year": {
+            "type": "integer",
+            "example": 2023
+          },
+          "month": {
+            "type": "integer"
+          },
+          "hour": {
+            "type": "integer"
+          },
+          "weekday": {
+            "type": "integer"
+          },
+          "category": {
+            "type": "integer",
+            "description": "1=fatal, 2=serious, 3=light"
+          },
+          "is_pedestrian": {
+            "type": "integer"
+          },
+          "is_bicycle": {
+            "type": "integer"
+          },
+          "lon": {
+            "type": "number"
+          },
+          "lat": {
+            "type": "number"
+          },
+          "region_id": {
+            "type": "integer"
+          }
+        }
+      },
+      "AggregateRow": {
+        "type": "object",
+        "properties": {
+          "ags": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "accident_count": {
+            "type": "integer"
+          }
+        }
+      },
+      "RateRow": {
+        "type": "object",
+        "properties": {
+          "ags": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "population": {
+            "type": "integer"
+          },
+          "accident_count": {
+            "type": "integer"
+          },
+          "rate_per_100k": {
+            "type": "number"
+          }
+        }
+      },
+      "DensityRow": {
+        "type": "object",
+        "properties": {
+          "ags": {
+            "type": "string",
+            "example": "14612"
+          },
+          "name": {
+            "type": "string",
+            "example": "Dresden, kreisfreie Stadt"
+          },
+          "area_km2": {
+            "type": "number",
+            "example": 328.48
+          },
+          "accident_count": {
+            "type": "integer",
+            "example": 4521
+          },
+          "accidents_per_km2": {
+            "type": "number",
+            "example": 13.76
+          }
+        }
+      },
+      "ImportRun": {
+        "type": "object",
+        "properties": {
+          "import_id": {
+            "type": "integer"
+          },
+          "source_name": {
+            "type": "string"
+          },
+          "source_url": {
+            "type": "string"
+          },
+          "imported_at": {
+            "type": "string"
+          },
+          "row_count": {
+            "type": "integer"
+          },
+          "license": {
+            "type": "string"
+          },
+          "license_url": {
+            "type": "string"
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/": {
+      "get": {
+        "summary": "API health check",
+        "responses": {
+          "200": {
+            "description": "API is running"
+          }
+        }
+      }
+    },
+    "/regions": {
+      "get": {
+        "summary": "List regions (states or districts)",
+        "description": "Returns all regions, optionally filtered by administrative level. Source - Regionalstatistik 12411-01-01-4.",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "level",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "state",
+                "district"
+              ]
+            },
+            "description": "Filter by administrative level"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of regions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "count": {
+                      "type": "integer"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Region"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/accidents": {
+      "get": {
+        "summary": "List accidents with filters",
+        "description": "Returns individual accident records. Source - Unfallatlas (opengeodata.nrw.de), years 2016-2024.",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "state",
+            "schema": {
+              "type": "string"
+            },
+            "description": "2-letter state code, e.g. SN (Sachsen), BE (Berlin), NW (NRW)"
+          },
+          {
+            "in": "query",
+            "name": "region",
+            "schema": {
+              "type": "string"
+            },
+            "description": "AGS region code (2-digit state or 5-digit district), e.g. 14612 for Dresden"
+          },
+          {
+            "in": "query",
+            "name": "year",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "month",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 12
+            }
+          },
+          {
+            "in": "query",
+            "name": "weekday",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 7
+            }
+          },
+          {
+            "in": "query",
+            "name": "hour",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 23
+            }
+          },
+          {
+            "in": "query",
+            "name": "category",
+            "schema": {
+              "type": "integer",
+              "enum": [
+                1,
+                2,
+                3
+              ]
+            },
+            "description": "1=fatal, 2=serious injury, 3=light injury"
+          },
+          {
+            "in": "query",
+            "name": "pedestrian",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "bicycle",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "default": 100,
+              "maximum": 1000
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "type": "integer",
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Filtered accident list with pagination",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "total": {
+                      "type": "integer"
+                    },
+                    "limit": {
+                      "type": "integer"
+                    },
+                    "offset": {
+                      "type": "integer"
+                    },
+                    "count": {
+                      "type": "integer"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Accident"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Unknown state code",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/aggregates/accidents": {
+      "get": {
+        "summary": "Aggregated accident counts by region",
+        "description": "Groups accident counts by state or district. Combines accident region keys with the regions table.",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "level",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "state",
+                "district"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "year",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "category",
+            "schema": {
+              "type": "integer",
+              "enum": [
+                1,
+                2,
+                3
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter districts to one state, e.g. SN"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Aggregated counts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "level": {
+                      "type": "string"
+                    },
+                    "year": {
+                      "type": "integer",
+                      "nullable": true
+                    },
+                    "category": {
+                      "type": "integer",
+                      "nullable": true
+                    },
+                    "count": {
+                      "type": "integer"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/AggregateRow"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid level or state code",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/aggregates/rates": {
+      "get": {
+        "summary": "Accident rate per 100,000 inhabitants (cross-source)",
+        "description": "Combines Unfallatlas accident counts with Regionalstatistik population figures to compute a normalised rate. Neither source alone can answer this.",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "level",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "state",
+                "district"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "year",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "maximum": 500
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "default": "desc"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Rate per 100,000 inhabitants per region",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "level": {
+                      "type": "string"
+                    },
+                    "year": {
+                      "type": "integer"
+                    },
+                    "note": {
+                      "type": "string"
+                    },
+                    "count": {
+                      "type": "integer"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/RateRow"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing or invalid parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/metadata/sources": {
+      "get": {
+        "summary": "Data provenance and licensing information",
+        "description": "Lists every import run (source, retrieval time, row count) together with the applicable data license.",
+        "responses": {
+          "200": {
+            "description": "Provenance log",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "count": {
+                      "type": "integer"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ImportRun"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/metadata/years": {
+      "get": {
+        "summary": "Earliest and latest accident year, overall and per state",
+        "description": "Directly answers \"earliest accident year\" questions for the whole dataset and per federal state.",
+        "responses": {
+          "200": {
+            "description": "Year coverage information"
+          }
+        }
+      }
+    },
+    "/aggregates/density": {
+      "get": {
+        "summary": "Accident density per km² (cross-source, district level)",
+        "description": "Combines Unfallatlas accident counts with GV-ISys area data (Gemeindeverzeichnis) to compute accidents per square kilometer. Neither source alone can answer this.",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "year",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "maximum": 500
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "default": "desc"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Accident density per district",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "year": {
+                      "type": "integer"
+                    },
+                    "note": {
+                      "type": "string"
+                    },
+                    "count": {
+                      "type": "integer"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/DensityRow"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing year parameter",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "tags": []
+}
